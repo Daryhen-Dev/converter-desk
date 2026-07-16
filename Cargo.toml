@@ -7,6 +7,13 @@ edition = "2021"
 name = "converter_desk"
 path = "src/lib.rs"
 
+[[bin]]
+name = "converter-desk"
+path = "src/main.rs"
+
 [dependencies]
 url = "2.5.4"
 thiserror = "2.0.12"
+
+[dev-dependencies]
+tempfile = "3.19.1"
