@@ -1,0 +1,12 @@
+[package]
+name = "converter-desk"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "converter_desk"
+path = "src/lib.rs"
+
+[dependencies]
+url = "2.5.4"
+thiserror = "2.0.12"
