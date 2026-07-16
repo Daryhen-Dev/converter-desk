@@ -21,8 +21,8 @@ use converter_desk::infrastructure::channel_sink::{AppEvent, ChannelSink};
 use converter_desk::infrastructure::ytdlp_downloader::YtDlpDownloader;
 use converter_desk::infrastructure::ytdlp_probe::YtDlpProbe;
 
-use eframe::egui;
 use crate::ui;
+use eframe::egui;
 
 // ─── Job state ───────────────────────────────────────────────────────────────
 
@@ -107,6 +107,13 @@ pub struct ConverterApp {
     /// Dedicated channel receiver for probe events (separate from download channel).
     probe_rx: Option<Receiver<AppEvent>>,
 
+    // Quality selection state
+    /// The quality level chosen by the user in the ComboBox. Defaults to `Best`.
+    pub selected_quality: Quality,
+    /// The selectable quality list populated after a successful probe.
+    /// Always contains at least `[Quality::Best]`.
+    pub selectable_qualities: Vec<Quality>,
+
     // Service (shared with worker thread via Arc)
     service: Arc<DownloadService<YtDlpDownloader>>,
 
@@ -127,12 +134,13 @@ impl ConverterApp {
         probe: YtDlpProbe,
         preflight: PreflightResult,
     ) -> Self {
-        let output_dir = dirs::download_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let output_dir = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));
 
         Self {
             url_input: String::new(),
-            format: Format::Video { quality: Quality::Best },
+            format: Format::Video {
+                quality: Quality::Best,
+            },
             output_dir,
             job_state: JobState::Idle,
             receiver: None,
@@ -141,6 +149,8 @@ impl ConverterApp {
             thumbnail_bytes: None,
             thumbnail_uri: None,
             probe_rx: None,
+            selected_quality: Quality::Best,
+            selectable_qualities: vec![Quality::Best],
             service: Arc::new(service),
             probe: Arc::new(probe),
             preflight,
@@ -169,19 +179,18 @@ impl ConverterApp {
         self.probe_state = ProbeState::Loading;
         self.thumbnail_bytes = None;
         self.thumbnail_uri = None;
+        self.selected_quality = Quality::Best;
 
         let (tx, rx) = mpsc::channel::<AppEvent>();
         self.probe_rx = Some(rx);
 
         let probe = Arc::clone(&self.probe);
-        std::thread::spawn(move || {
-            match probe.probe(&url) {
-                Ok(info) => {
-                    let _ = tx.send(AppEvent::ProbeResult(info));
-                }
-                Err(e) => {
-                    let _ = tx.send(AppEvent::ProbeError(e.to_string()));
-                }
+        std::thread::spawn(move || match probe.probe(&url) {
+            Ok(info) => {
+                let _ = tx.send(AppEvent::ProbeResult(info));
+            }
+            Err(e) => {
+                let _ = tx.send(AppEvent::ProbeError(e.to_string()));
             }
         });
     }
@@ -212,7 +221,7 @@ impl ConverterApp {
 
         let job = DownloadJob {
             url,
-            format: self.format,
+            format: build_format(self.format, self.selected_quality),
             output_path,
         };
 
@@ -273,10 +282,7 @@ impl ConverterApp {
                         }
                     }
                     AppEvent::Stage(s) => {
-                        if let JobState::Running {
-                            ref mut stage, ..
-                        } = self.job_state
-                        {
+                        if let JobState::Running { ref mut stage, .. } = self.job_state {
                             *stage = s;
                         }
                     }
@@ -289,7 +295,9 @@ impl ConverterApp {
                         self.receiver = None;
                     }
                     // Download channel should not receive probe events, but handle gracefully.
-                    AppEvent::ProbeResult(_) | AppEvent::ProbeError(_) | AppEvent::ThumbnailReady(_, _) => {}
+                    AppEvent::ProbeResult(_)
+                    | AppEvent::ProbeError(_)
+                    | AppEvent::ThumbnailReady(_, _) => {}
                 },
                 Some(Err(TryRecvError::Empty)) => break,
                 Some(Err(TryRecvError::Disconnected)) => {
@@ -332,7 +340,8 @@ impl ConverterApp {
                                         .read_to_vec()
                                         .map_err(|e| e.to_string())?;
                                     Ok(bytes)
-                                })();
+                                })(
+                                );
                                 match result {
                                     Ok(bytes) => {
                                         let _ = thumb_tx.send(AppEvent::ThumbnailReady(bytes, uri));
@@ -345,6 +354,10 @@ impl ConverterApp {
                         } else {
                             self.probe_rx = None;
                         }
+                        // Reset quality selection and populate list from probe result.
+                        self.selected_quality = Quality::Best;
+                        self.selectable_qualities =
+                            Quality::selectable_list(&info.available_qualities);
                         self.probe_state = ProbeState::Loaded(info);
                     }
                     AppEvent::ProbeError(msg) => {
@@ -357,7 +370,10 @@ impl ConverterApp {
                         self.probe_rx = None;
                     }
                     // Probe channel should not receive download events.
-                    AppEvent::Progress(_) | AppEvent::Stage(_) | AppEvent::Done | AppEvent::Error(_) => {}
+                    AppEvent::Progress(_)
+                    | AppEvent::Stage(_)
+                    | AppEvent::Done
+                    | AppEvent::Error(_) => {}
                 },
                 Some(Err(TryRecvError::Empty)) => break,
                 Some(Err(TryRecvError::Disconnected)) => {
@@ -370,8 +386,20 @@ impl ConverterApp {
     }
 }
 
-// ─── eframe::App implementation ─────────────────────────────────────────────
+// ─── Pure helpers ────────────────────────────────────────────────────────────
 
+/// Build the `Format` value for a `DownloadJob` by threading `selected` quality
+/// into a Video format, or passing AudioMp3 through unchanged.
+///
+/// Pure function — no side effects, easy to unit-test.
+pub(crate) fn build_format(base: Format, selected: Quality) -> Format {
+    match base {
+        Format::Video { .. } => Format::Video { quality: selected },
+        Format::AudioMp3 => Format::AudioMp3,
+    }
+}
+
+// ─── eframe::App implementation ─────────────────────────────────────────────
 impl eframe::App for ConverterApp {
     /// Called every frame. Drains the progress channel then renders the UI.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -409,6 +437,9 @@ impl eframe::App for ConverterApp {
             &self.probe_state,
             self.thumbnail_bytes.as_deref(),
             self.thumbnail_uri.as_deref(),
+            &mut self.selected_quality,
+            &self.selectable_qualities,
+            self.format,
         );
         ui.separator();
 
@@ -432,6 +463,78 @@ impl eframe::App for ConverterApp {
             // join that will return quickly if the thread has already exited.
             // On drop of a JoinHandle the thread is detached, not killed.
             drop(handle); // detach — acceptable for MVP
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_format;
+    use converter_desk::domain::format::Format;
+    use converter_desk::domain::quality::Quality;
+
+    // 3.1 RED — video uses the selected quality (not base quality)
+    #[test]
+    fn video_uses_selected_quality() {
+        let base = Format::Video {
+            quality: Quality::Best,
+        };
+        let result = build_format(base, Quality::P720);
+        assert_eq!(
+            result,
+            Format::Video {
+                quality: Quality::P720
+            }
+        );
+    }
+
+    // 3.1 RED — AudioMp3 ignores selected quality, passes through unchanged
+    #[test]
+    fn audio_mp3_ignores_quality() {
+        let result = build_format(Format::AudioMp3, Quality::P1080);
+        assert_eq!(result, Format::AudioMp3);
+    }
+
+    // 3.1 RED — video with no prior probe (default Best) stays Best when selected is Best
+    #[test]
+    fn video_default_best_stays_best() {
+        let base = Format::Video {
+            quality: Quality::Best,
+        };
+        let result = build_format(base, Quality::Best);
+        assert_eq!(
+            result,
+            Format::Video {
+                quality: Quality::Best
+            }
+        );
+    }
+
+    // Triangulation: video with P1080 base, P720 selected → P720 wins
+    #[test]
+    fn video_selected_overrides_base_quality() {
+        let base = Format::Video {
+            quality: Quality::P1080,
+        };
+        let result = build_format(base, Quality::P720);
+        assert_eq!(
+            result,
+            Format::Video {
+                quality: Quality::P720
+            }
+        );
+    }
+
+    // Triangulation: AudioMp3 is unaffected by any quality variant
+    #[test]
+    fn audio_mp3_unaffected_by_any_quality() {
+        for q in [Quality::Best, Quality::P2160, Quality::P720, Quality::P360] {
+            assert_eq!(
+                build_format(Format::AudioMp3, q),
+                Format::AudioMp3,
+                "AudioMp3 must be unchanged for quality {:?}",
+                q
+            );
         }
     }
 }

@@ -53,6 +53,36 @@ impl Quality {
             Quality::Best => panic!("Best has no height cap"),
         }
     }
+
+    /// Ordering key for descending sort: higher value = better / more prominent.
+    ///
+    /// `Best` maps to `u32::MAX` so it always sorts first in a descending sort,
+    /// routing around the `height_cap` panic that guards against programmer error.
+    pub fn sort_key(self) -> u32 {
+        match self {
+            Quality::Best => u32::MAX,
+            other => other.height_cap(),
+        }
+    }
+
+    /// Build the selectable list for the Quality ComboBox.
+    ///
+    /// - Deduplicates entries from `available`.
+    /// - Sorts descending by `sort_key` (Best → u32::MAX always lands first).
+    /// - Always includes `Quality::Best` exactly once at index 0.
+    /// - Empty input → `vec![Quality::Best]`.
+    pub fn selectable_list(available: &[Quality]) -> Vec<Quality> {
+        use std::collections::HashSet;
+
+        let mut set: HashSet<Quality> = available.iter().copied().collect();
+        // Ensure Best is always present
+        set.insert(Quality::Best);
+
+        let mut list: Vec<Quality> = set.into_iter().collect();
+        // Descending sort by sort_key — Best (u32::MAX) always lands at index 0
+        list.sort_by_key(|q| std::cmp::Reverse(q.sort_key()));
+        list
+    }
 }
 
 impl std::fmt::Display for Quality {
@@ -74,8 +104,125 @@ impl std::fmt::Display for Quality {
 mod tests {
     use super::Quality;
 
-    // 1.1 RED — boundary tests for from_height
-    // These tests are written BEFORE the implementation exists (todo! placeholder).
+    // ── sort_key tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn sort_key_best_is_u32_max_no_panic() {
+        assert_eq!(Quality::Best.sort_key(), u32::MAX);
+    }
+
+    #[test]
+    fn sort_key_p2160_is_2160() {
+        assert_eq!(Quality::P2160.sort_key(), 2160);
+    }
+
+    #[test]
+    fn sort_key_p1080_is_1080() {
+        assert_eq!(Quality::P1080.sort_key(), 1080);
+    }
+
+    #[test]
+    fn sort_key_descending_order() {
+        // Best > P2160 > P1440 > P1080 > P720 > P480 > P360
+        let ordered = [
+            Quality::Best,
+            Quality::P2160,
+            Quality::P1440,
+            Quality::P1080,
+            Quality::P720,
+            Quality::P480,
+            Quality::P360,
+        ];
+        for window in ordered.windows(2) {
+            assert!(
+                window[0].sort_key() > window[1].sort_key(),
+                "{:?}.sort_key() should be > {:?}.sort_key()",
+                window[0],
+                window[1]
+            );
+        }
+    }
+
+    // ── selectable_list tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn empty_returns_best_first() {
+        let result = Quality::selectable_list(&[]);
+        assert_eq!(result, vec![Quality::Best]);
+    }
+
+    #[test]
+    fn dedup_and_sort_desc_best_first() {
+        // Input: [P720, P1080, P720] — dedup → {P720, P1080}, sort desc → [P1080, P720]
+        // Best prepended → [Best, P1080, P720]
+        let result = Quality::selectable_list(&[Quality::P720, Quality::P1080, Quality::P720]);
+        assert_eq!(result[0], Quality::Best, "Best must be at index 0");
+        assert_eq!(result[1], Quality::P1080);
+        assert_eq!(result[2], Quality::P720);
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn already_sorted_preserved_best_first() {
+        // Input: [P2160, P1080, P720, P480] → [Best, P2160, P1080, P720, P480]
+        let result = Quality::selectable_list(&[
+            Quality::P2160,
+            Quality::P1080,
+            Quality::P720,
+            Quality::P480,
+        ]);
+        assert_eq!(result[0], Quality::Best);
+        assert_eq!(result[1], Quality::P2160);
+        assert_eq!(result[2], Quality::P1080);
+        assert_eq!(result[3], Quality::P720);
+        assert_eq!(result[4], Quality::P480);
+        assert_eq!(result.len(), 5);
+    }
+
+    #[test]
+    fn input_already_contains_best_no_duplicate() {
+        // Input: [P1080, Best] — Best is in input, should appear exactly once at front
+        let result = Quality::selectable_list(&[Quality::P1080, Quality::Best]);
+        assert_eq!(result[0], Quality::Best, "Best must be at index 0");
+        assert_eq!(result[1], Quality::P1080);
+        assert_eq!(result.len(), 2, "Best must not be duplicated");
+    }
+
+    #[test]
+    fn all_same_deduped() {
+        // Input: [P720, P720, P720] → dedup to {P720} → [Best, P720]
+        let result = Quality::selectable_list(&[Quality::P720, Quality::P720, Quality::P720]);
+        assert_eq!(result[0], Quality::Best);
+        assert_eq!(result[1], Quality::P720);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn single_element_no_best_produces_two_items() {
+        let result = Quality::selectable_list(&[Quality::P1080]);
+        assert_eq!(result, vec![Quality::Best, Quality::P1080]);
+    }
+
+    #[test]
+    fn result_is_sorted_descending_by_sort_key() {
+        let result = Quality::selectable_list(&[
+            Quality::P480,
+            Quality::P720,
+            Quality::P1080,
+            Quality::P2160,
+        ]);
+        // Should be [Best, P2160, P1080, P720, P480]
+        for window in result.windows(2) {
+            assert!(
+                window[0].sort_key() >= window[1].sort_key(),
+                "Result must be sorted descending: {:?} >= {:?}",
+                window[0],
+                window[1]
+            );
+        }
+    }
+
+    // ── from_height boundary tests ────────────────────────────────────────────
 
     #[test]
     fn from_height_zero_is_p360() {

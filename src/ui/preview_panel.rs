@@ -6,6 +6,7 @@
 use eframe::egui;
 
 use crate::app::ProbeState;
+use converter_desk::domain::format::Format;
 use converter_desk::domain::quality::Quality;
 
 /// Format a duration in seconds as `mm:ss`.
@@ -26,7 +27,8 @@ fn format_duration(duration_secs: Option<f64>) -> String {
 /// Render the preview panel.
 ///
 /// - When `state` is `ProbeState::Loaded`, shows thumbnail (or placeholder),
-///   title, duration, uploader, and a display-only Quality ComboBox fixed to Best.
+///   title, duration, uploader, and an interactive Quality ComboBox.
+/// - The Quality ComboBox is hidden when `format` is `Format::AudioMp3`.
 /// - For other states shows appropriate stub text.
 ///
 /// `thumbnail_bytes` and `thumbnail_uri` are both `Some` if a thumbnail was
@@ -36,6 +38,9 @@ pub fn show(
     state: &ProbeState,
     thumbnail_bytes: Option<&[u8]>,
     thumbnail_uri: Option<&str>,
+    selected_quality: &mut Quality,
+    qualities: &[Quality],
+    format: Format,
 ) {
     match state {
         ProbeState::Idle => {
@@ -65,15 +70,10 @@ pub fn show(
                         ui.add(img);
                     } else {
                         // Placeholder
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(180.0, 101.0),
-                            egui::Sense::hover(),
-                        );
-                        ui.painter().rect_filled(
-                            rect,
-                            4.0,
-                            egui::Color32::from_gray(60),
-                        );
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(180.0, 101.0), egui::Sense::hover());
+                        ui.painter()
+                            .rect_filled(rect, 4.0, egui::Color32::from_gray(60));
                         ui.painter().text(
                             rect.center(),
                             egui::Align2::CENTER_CENTER,
@@ -108,22 +108,23 @@ pub fn show(
 
                         ui.add_space(4.0);
 
-                        // Quality ComboBox — display-only, fixed to Best for Change 1
-                        ui.horizontal(|ui| {
-                            ui.label("Quality:");
-                            // Display-only ComboBox fixed to Best
-                            egui::ComboBox::from_id_salt("preview_quality_selector")
-                                .selected_text(Quality::Best.to_string())
-                                .show_ui(ui, |ui| {
-                                    // Display-only: single item, non-interactive selection
-                                    let mut selected = Quality::Best;
-                                    ui.selectable_value(
-                                        &mut selected,
-                                        Quality::Best,
-                                        Quality::Best.to_string(),
-                                    );
-                                });
-                        });
+                        // Quality ComboBox — interactive; hidden for AudioMp3
+                        if matches!(format, Format::Video { .. }) {
+                            ui.horizontal(|ui| {
+                                ui.label("Quality:");
+                                egui::ComboBox::from_id_salt("preview_quality_selector")
+                                    .selected_text(selected_quality.to_string())
+                                    .show_ui(ui, |ui| {
+                                        for q in qualities {
+                                            ui.selectable_value(
+                                                selected_quality,
+                                                *q,
+                                                q.to_string(),
+                                            );
+                                        }
+                                    });
+                            });
+                        }
                     });
                 });
             });
