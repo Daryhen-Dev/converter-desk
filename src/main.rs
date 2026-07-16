@@ -18,7 +18,7 @@ mod ui;
 use app::{ConverterApp, PreflightResult};
 use converter_desk::application::download_service::DownloadService;
 use converter_desk::application::ports::BinaryProbe;
-use converter_desk::infrastructure::binary_probe::{BinaryProbeImpl, resolve_binary_path};
+use converter_desk::infrastructure::binary_probe::{resolve_binary_path, BinaryProbeImpl};
 use converter_desk::infrastructure::ytdlp_downloader::YtDlpDownloader;
 use converter_desk::infrastructure::ytdlp_probe::YtDlpProbe;
 
@@ -34,20 +34,29 @@ fn main() -> eframe::Result {
     let (ytdlp_version, ytdlp_errors) = match ytdlp_path.as_ref() {
         Some(_) => match probe.check_available("yt-dlp") {
             Ok(v) => (Some(v), vec![]),
-            Err(e) => (None, vec![format!(
+            Err(e) => (
+                None,
+                vec![format!(
                 "yt-dlp is not working: {e}. Install: winget install yt-dlp  /  pacman -S yt-dlp"
-            )]),
+            )],
+            ),
         },
-        None => (None, vec![
-            "yt-dlp not found. Install: winget install yt-dlp  /  pacman -S yt-dlp".to_string()
-        ]),
+        None => (
+            None,
+            vec![
+                "yt-dlp not found. Install: winget install yt-dlp  /  pacman -S yt-dlp".to_string(),
+            ],
+        ),
     };
 
     let (ffmpeg_version, ffmpeg_errors) = match probe.check_available("ffmpeg") {
         Ok(v) => (Some(v), vec![]),
-        Err(_) => (None, vec![
-            "ffmpeg not found. Install: winget install ffmpeg  /  pacman -S ffmpeg".to_string()
-        ]),
+        Err(_) => (
+            None,
+            vec![
+                "ffmpeg not found. Install: winget install ffmpeg  /  pacman -S ffmpeg".to_string(),
+            ],
+        ),
     };
 
     let mut all_errors = ytdlp_errors;
@@ -64,8 +73,7 @@ fn main() -> eframe::Result {
     // name) so the binary path stored in the adapter is still valid.
     // On preflight failure the UI disables the form so execute() won't be
     // called — but the service must still be constructed for compilation.
-    let effective_ytdlp_path =
-        ytdlp_path.unwrap_or_else(|| std::path::PathBuf::from("yt-dlp"));
+    let effective_ytdlp_path = ytdlp_path.unwrap_or_else(|| std::path::PathBuf::from("yt-dlp"));
 
     let downloader = YtDlpDownloader::new(effective_ytdlp_path.clone());
     let service = DownloadService::new(downloader);

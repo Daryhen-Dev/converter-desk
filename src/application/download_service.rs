@@ -37,25 +37,19 @@ impl<D: MediaDownloader> DownloadService<D> {
     /// 1. Builds the yt-dlp argument vector via `arg_builder`.
     /// 2. Calls the downloader port with a line callback.
     /// 3. Each line is parsed and forwarded to `sink` as `Progress` or `Stage`.
-    pub fn execute(
-        &self,
-        job: &DownloadJob,
-        sink: &dyn ProgressSink,
-    ) -> Result<(), DownloadError> {
-        let (binary, args) = arg_builder::build_command(
-            job.format,
-            &job.url,
-            "yt-dlp",
-            &job.output_path,
-        );
+    pub fn execute(&self, job: &DownloadJob, sink: &dyn ProgressSink) -> Result<(), DownloadError> {
+        let (binary, args) =
+            arg_builder::build_command(job.format, &job.url, "yt-dlp", &job.output_path);
 
-        self.downloader.download(&binary, args, &|line| {
-            match progress_parser::parse_line(line) {
+        self.downloader.download(
+            &binary,
+            args,
+            &|line| match progress_parser::parse_line(line) {
                 ParsedLine::Progress(p) => sink.on_progress(p),
                 ParsedLine::StageChange(s) => sink.on_stage(s),
                 ParsedLine::Ignored => {}
-            }
-        })
+            },
+        )
     }
 }
 
@@ -70,7 +64,9 @@ mod tests {
     fn make_job() -> DownloadJob {
         DownloadJob {
             url: MediaUrl::parse("https://example.com/video").unwrap(),
-            format: Format::Video { quality: crate::domain::quality::Quality::Best },
+            format: Format::Video {
+                quality: crate::domain::quality::Quality::Best,
+            },
             output_path: "%(title)s.%(ext)s".to_string(),
         }
     }

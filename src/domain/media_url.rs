@@ -6,8 +6,7 @@ pub struct MediaUrl(url::Url);
 impl MediaUrl {
     /// Parse and validate a URL string. Only http and https schemes are accepted.
     pub fn parse(input: &str) -> Result<Self, DomainError> {
-        let parsed = url::Url::parse(input)
-            .map_err(|e| DomainError::InvalidUrl(e.to_string()))?;
+        let parsed = url::Url::parse(input).map_err(|e| DomainError::InvalidUrl(e.to_string()))?;
 
         match parsed.scheme() {
             "http" | "https" => {}
@@ -67,14 +66,20 @@ mod tests {
     fn rejects_url_without_host() {
         // "https://" has no host — url crate returns Err("empty host")
         let result = MediaUrl::parse("https://");
-        assert!(result.is_err(), "Expected Err for URL without host (https://)");
+        assert!(
+            result.is_err(),
+            "Expected Err for URL without host (https://)"
+        );
     }
 
     #[test]
     fn accepts_non_ascii_percent_encoded_path() {
         // Non-ASCII percent-encoded path — url crate handles this fine
         let result = MediaUrl::parse("https://example.com/v%C3%ADdeo");
-        assert!(result.is_ok(), "Expected Ok for percent-encoded non-ASCII path");
+        assert!(
+            result.is_ok(),
+            "Expected Ok for percent-encoded non-ASCII path"
+        );
     }
 
     #[test]

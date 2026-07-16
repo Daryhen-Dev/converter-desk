@@ -33,7 +33,11 @@ pub fn parse_line(line: &str) -> ParsedLine {
         if let Ok(percent) = percent_str.parse::<f32>() {
             let speed = parts[1].trim().to_string();
             let eta = parts[2].trim().to_string();
-            return ParsedLine::Progress(Progress { percent, speed, eta });
+            return ParsedLine::Progress(Progress {
+                percent,
+                speed,
+                eta,
+            });
         }
     }
 
@@ -51,7 +55,11 @@ mod tests {
         let result = parse_line("42.5%|1.20MiB/s|00:42");
         match result {
             ParsedLine::Progress(p) => {
-                assert!((p.percent - 42.5).abs() < 0.01, "percent must be 42.5, got {}", p.percent);
+                assert!(
+                    (p.percent - 42.5).abs() < 0.01,
+                    "percent must be 42.5, got {}",
+                    p.percent
+                );
                 assert_eq!(p.speed, "1.20MiB/s");
                 assert_eq!(p.eta, "00:42");
             }

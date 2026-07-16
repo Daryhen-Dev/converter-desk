@@ -88,11 +88,9 @@ mod tests {
     #[ignore]
     fn integration_successful_download_returns_ok() {
         // Resolve yt-dlp from the environment.
-        let path = crate::infrastructure::binary_probe::resolve_binary_path(
-            "yt-dlp",
-            "YT_DLP_PATH",
-        )
-        .expect("yt-dlp must be installed and on PATH to run this test");
+        let path =
+            crate::infrastructure::binary_probe::resolve_binary_path("yt-dlp", "YT_DLP_PATH")
+                .expect("yt-dlp must be installed and on PATH to run this test");
 
         let downloader = YtDlpDownloader::new(path);
 
@@ -123,11 +121,9 @@ mod tests {
     #[test]
     #[ignore]
     fn integration_nonzero_exit_returns_err() {
-        let path = crate::infrastructure::binary_probe::resolve_binary_path(
-            "yt-dlp",
-            "YT_DLP_PATH",
-        )
-        .expect("yt-dlp must be installed and on PATH to run this test");
+        let path =
+            crate::infrastructure::binary_probe::resolve_binary_path("yt-dlp", "YT_DLP_PATH")
+                .expect("yt-dlp must be installed and on PATH to run this test");
 
         let downloader = YtDlpDownloader::new(path);
 

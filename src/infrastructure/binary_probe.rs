@@ -95,9 +95,7 @@ impl BinaryProbe for BinaryProbeImpl {
         let output = std::process::Command::new(&path)
             .arg(version_flag(binary_name))
             .output()
-            .map_err(|e| {
-                DownloadError::BinaryNotFound(format!("{binary_name}: {e}"))
-            })?;
+            .map_err(|e| DownloadError::BinaryNotFound(format!("{binary_name}: {e}")))?;
 
         if !output.status.success() {
             return Err(DownloadError::BinaryNotFound(format!(
@@ -196,13 +194,12 @@ mod tests {
 
         // Prepend the temp dir to PATH so the binary is discoverable.
         let original_path = std::env::var("PATH").unwrap_or_default();
-        let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-        let prepended = format!(
-            "{}{}{}",
-            dir.path().to_str().unwrap(),
-            sep,
-            original_path
-        );
+        let sep = if cfg!(target_os = "windows") {
+            ";"
+        } else {
+            ":"
+        };
+        let prepended = format!("{}{}{}", dir.path().to_str().unwrap(), sep, original_path);
         std::env::set_var("PATH", &prepended);
 
         let env_key = "TEST_YTDLP_PATH_FALLBACK";
@@ -215,7 +212,10 @@ mod tests {
         // Restore PATH
         std::env::set_var("PATH", &original_path);
 
-        assert!(result.is_some(), "PATH fallback must find the binary; got None");
+        assert!(
+            result.is_some(),
+            "PATH fallback must find the binary; got None"
+        );
     }
 
     // 2.4 Returns None when no source finds the binary

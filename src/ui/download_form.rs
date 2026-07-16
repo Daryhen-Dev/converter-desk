@@ -38,8 +38,12 @@ pub fn show(ui: &mut egui::Ui, app: &mut ConverterApp) {
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
                         &mut app.format,
-                        Format::Video { quality: Quality::Best },
-                        format_label(Format::Video { quality: Quality::Best }),
+                        Format::Video {
+                            quality: Quality::Best,
+                        },
+                        format_label(Format::Video {
+                            quality: Quality::Best,
+                        }),
                     );
                     ui.selectable_value(
                         &mut app.format,
@@ -54,10 +58,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut ConverterApp) {
         // ── Output directory picker ──────────────────────────────────────────
         ui.horizontal(|ui| {
             ui.label("Output folder:");
-            let dir_label = app
-                .output_dir
-                .to_string_lossy()
-                .into_owned();
+            let dir_label = app.output_dir.to_string_lossy().into_owned();
             ui.label(egui::RichText::new(&dir_label).monospace());
 
             if ui
@@ -89,7 +90,11 @@ pub fn show(ui: &mut egui::Ui, app: &mut ConverterApp) {
             }
 
             // Download button — enabled for ALL ProbeState variants
-            let submit_label = if is_running { "Downloading…" } else { "Download" };
+            let submit_label = if is_running {
+                "Downloading…"
+            } else {
+                "Download"
+            };
             if ui
                 .add_enabled(!is_running, egui::Button::new(submit_label))
                 .clicked()

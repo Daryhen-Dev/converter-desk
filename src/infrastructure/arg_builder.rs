@@ -103,12 +103,17 @@ mod tests {
     fn no_playlist_present_for_video_highest() {
         let url = make_url("https://example.com/video");
         let args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        assert!(args.contains(&"--no-playlist".to_string()), "--no-playlist must be in args");
+        assert!(
+            args.contains(&"--no-playlist".to_string()),
+            "--no-playlist must be in args"
+        );
     }
 
     // 3.2 RED → GREEN — --no-playlist present for AudioMp3
@@ -116,7 +121,10 @@ mod tests {
     fn no_playlist_present_for_audio_mp3() {
         let url = make_url("https://example.com/audio");
         let args = super::build_args(Format::AudioMp3, &url, "yt-dlp", "%(title)s.%(ext)s");
-        assert!(args.contains(&"--no-playlist".to_string()), "--no-playlist must be in args");
+        assert!(
+            args.contains(&"--no-playlist".to_string()),
+            "--no-playlist must be in args"
+        );
     }
 
     // 3.3 RED → GREEN — URL is last element; result has more than one element
@@ -124,12 +132,17 @@ mod tests {
     fn url_is_last_element() {
         let url = make_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
         let args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        assert!(args.len() > 1, "args vector must have more than one element");
+        assert!(
+            args.len() > 1,
+            "args vector must have more than one element"
+        );
         assert_eq!(
             args.last().unwrap(),
             url.as_str(),
@@ -142,7 +155,9 @@ mod tests {
     fn url_with_metacharacters_is_discrete_element() {
         let url = make_url("https://example.com/watch?v=abc&list=xyz&index=1");
         let args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
@@ -162,7 +177,9 @@ mod tests {
     fn video_highest_includes_mp4_output_format() {
         let url = make_url("https://example.com/video");
         let args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
@@ -171,8 +188,15 @@ mod tests {
             args.contains(&"--merge-output-format".to_string()),
             "Video must contain --merge-output-format"
         );
-        let idx = args.iter().position(|a| a == "--merge-output-format").unwrap();
-        assert_eq!(args[idx + 1], "mp4", "--merge-output-format must be followed by mp4");
+        let idx = args
+            .iter()
+            .position(|a| a == "--merge-output-format")
+            .unwrap();
+        assert_eq!(
+            args[idx + 1],
+            "mp4",
+            "--merge-output-format must be followed by mp4"
+        );
     }
 
     // 3.5 RED → GREEN — AudioMp3 includes --extract-audio --audio-format mp3
@@ -189,7 +213,11 @@ mod tests {
             "AudioMp3 must contain --audio-format"
         );
         let idx = args.iter().position(|a| a == "--audio-format").unwrap();
-        assert_eq!(args[idx + 1], "mp3", "--audio-format must be followed by mp3");
+        assert_eq!(
+            args[idx + 1],
+            "mp3",
+            "--audio-format must be followed by mp3"
+        );
     }
 
     // 3.6 RED → GREEN — --newline present; --progress-template present with pipe-delimited template
@@ -197,22 +225,42 @@ mod tests {
     fn progress_template_flags_are_present() {
         let url = make_url("https://example.com/video");
         let args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        assert!(args.contains(&"--newline".to_string()), "--newline must be present");
+        assert!(
+            args.contains(&"--newline".to_string()),
+            "--newline must be present"
+        );
         assert!(
             args.contains(&"--progress-template".to_string()),
             "--progress-template must be present"
         );
-        let idx = args.iter().position(|a| a == "--progress-template").unwrap();
+        let idx = args
+            .iter()
+            .position(|a| a == "--progress-template")
+            .unwrap();
         let template = &args[idx + 1];
-        assert!(template.contains('|'), "progress-template must be pipe-delimited, got: {template}");
-        assert!(template.contains("percent"), "progress-template must include percent field");
-        assert!(template.contains("speed"), "progress-template must include speed field");
-        assert!(template.contains("eta"), "progress-template must include eta field");
+        assert!(
+            template.contains('|'),
+            "progress-template must be pipe-delimited, got: {template}"
+        );
+        assert!(
+            template.contains("percent"),
+            "progress-template must include percent field"
+        );
+        assert!(
+            template.contains("speed"),
+            "progress-template must include speed field"
+        );
+        assert!(
+            template.contains("eta"),
+            "progress-template must include eta field"
+        );
     }
 
     // 3.7 RED → GREEN — explicit binary path returned as executable, not in args
@@ -220,7 +268,9 @@ mod tests {
     fn explicit_binary_path_is_respected() {
         let url = make_url("https://example.com/video");
         let (binary, args) = super::build_command(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "/usr/local/bin/yt-dlp",
             "%(title)s.%(ext)s",
@@ -236,7 +286,9 @@ mod tests {
     fn default_binary_is_yt_dlp() {
         let url = make_url("https://example.com/video");
         let (binary, _args) = super::build_command(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
@@ -249,13 +301,14 @@ mod tests {
     fn video_highest_and_audio_mp3_produce_distinct_flag_sets() {
         let url = make_url("https://example.com/video");
         let video_args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        let audio_args =
-            super::build_args(Format::AudioMp3, &url, "yt-dlp", "%(title)s.%(ext)s");
+        let audio_args = super::build_args(Format::AudioMp3, &url, "yt-dlp", "%(title)s.%(ext)s");
         assert_ne!(
             video_args, audio_args,
             "Video and AudioMp3 must produce distinct argument vectors"
@@ -269,12 +322,17 @@ mod tests {
     fn test_video_best_parity() {
         let url = make_url("https://example.com/video");
         let args = super::build_args(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        let f_idx = args.iter().position(|a| a == "-f").expect("-f must be present");
+        let f_idx = args
+            .iter()
+            .position(|a| a == "-f")
+            .expect("-f must be present");
         assert_eq!(
             args[f_idx + 1],
             "bestvideo+bestaudio/best",
@@ -287,12 +345,17 @@ mod tests {
     fn test_p1080_selector() {
         let url = make_url("https://example.com/video");
         let args = super::build_args(
-            Format::Video { quality: Quality::P1080 },
+            Format::Video {
+                quality: Quality::P1080,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        let f_idx = args.iter().position(|a| a == "-f").expect("-f must be present");
+        let f_idx = args
+            .iter()
+            .position(|a| a == "-f")
+            .expect("-f must be present");
         assert_eq!(
             args[f_idx + 1],
             "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
@@ -304,12 +367,17 @@ mod tests {
     fn test_p720_selector() {
         let url = make_url("https://example.com/video");
         let args = super::build_args(
-            Format::Video { quality: Quality::P720 },
+            Format::Video {
+                quality: Quality::P720,
+            },
             &url,
             "yt-dlp",
             "%(title)s.%(ext)s",
         );
-        let f_idx = args.iter().position(|a| a == "-f").expect("-f must be present");
+        let f_idx = args
+            .iter()
+            .position(|a| a == "-f")
+            .expect("-f must be present");
         assert_eq!(
             args[f_idx + 1],
             "bestvideo[height<=720]+bestaudio/best[height<=720]"
@@ -357,7 +425,8 @@ mod tests {
                 .position(|a| a == "--merge-output-format")
                 .unwrap();
             assert_eq!(
-                args[merge_idx + 1], "mp4",
+                args[merge_idx + 1],
+                "mp4",
                 "Quality {quality}: --merge-output-format must be followed by mp4"
             );
             assert_eq!(

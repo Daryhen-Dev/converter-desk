@@ -159,10 +159,16 @@ mod tests {
 
         let result = parse_probe_json(&value).expect("should succeed");
         assert_eq!(result.title, "Test Video");
-        assert_eq!(result.thumbnail_url, Some("https://i.ytimg.com/vi/abc/hqdefault.jpg".to_string()));
+        assert_eq!(
+            result.thumbnail_url,
+            Some("https://i.ytimg.com/vi/abc/hqdefault.jpg".to_string())
+        );
         assert!((result.duration_secs.unwrap() - 193.0).abs() < 0.001);
         assert_eq!(result.uploader, Some("TestChannel".to_string()));
-        assert_eq!(result.available_qualities, vec![Quality::P1080, Quality::P720]);
+        assert_eq!(
+            result.available_qualities,
+            vec![Quality::P1080, Quality::P720]
+        );
     }
 
     // 4.1 RED → GREEN — missing optional fields degrade to None, no panic
@@ -211,10 +217,17 @@ mod tests {
         });
 
         let result = parse_probe_json(&value).expect("should succeed");
-        assert_eq!(result.available_qualities, vec![Quality::P1080, Quality::P720]);
+        assert_eq!(
+            result.available_qualities,
+            vec![Quality::P1080, Quality::P720]
+        );
         // P1080 appears exactly once
         assert_eq!(
-            result.available_qualities.iter().filter(|&&q| q == Quality::P1080).count(),
+            result
+                .available_qualities
+                .iter()
+                .filter(|&&q| q == Quality::P1080)
+                .count(),
             1
         );
     }
@@ -257,12 +270,13 @@ mod tests {
     #[test]
     #[ignore]
     fn test_integration_real_ytdlp() {
-        let path = crate::infrastructure::binary_probe::resolve_binary_path("yt-dlp", "YT_DLP_PATH")
-            .expect("yt-dlp must be installed and on PATH");
+        let path =
+            crate::infrastructure::binary_probe::resolve_binary_path("yt-dlp", "YT_DLP_PATH")
+                .expect("yt-dlp must be installed and on PATH");
 
         let probe = YtDlpProbe::new(path);
-        let url = MediaUrl::parse("https://www.youtube.com/watch?v=jNQXAC9IVRw")
-            .expect("valid URL");
+        let url =
+            MediaUrl::parse("https://www.youtube.com/watch?v=jNQXAC9IVRw").expect("valid URL");
 
         let result = probe.probe(&url);
         assert!(result.is_ok(), "Expected Ok(MediaInfo), got: {result:?}");
@@ -281,7 +295,10 @@ mod tests {
             args.contains(&"--no-playlist".to_string()),
             "--no-playlist must be present in probe args"
         );
-        assert!(args.contains(&"-J".to_string()), "-J must be present in probe args");
+        assert!(
+            args.contains(&"-J".to_string()),
+            "-J must be present in probe args"
+        );
         assert_eq!(
             args.last().unwrap(),
             url.as_str(),

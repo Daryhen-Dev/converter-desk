@@ -18,8 +18,15 @@ mod tests {
     // Migrated format representability tests.
     #[test]
     fn format_video_best_is_representable() {
-        let f = Format::Video { quality: Quality::Best };
-        assert_eq!(f, Format::Video { quality: Quality::Best });
+        let f = Format::Video {
+            quality: Quality::Best,
+        };
+        assert_eq!(
+            f,
+            Format::Video {
+                quality: Quality::Best
+            }
+        );
     }
 
     #[test]
@@ -31,14 +38,18 @@ mod tests {
     #[test]
     fn format_variants_are_distinct() {
         assert_ne!(
-            Format::Video { quality: Quality::Best },
+            Format::Video {
+                quality: Quality::Best
+            },
             Format::AudioMp3
         );
     }
 
     #[test]
     fn format_is_copyable() {
-        let original = Format::Video { quality: Quality::Best };
+        let original = Format::Video {
+            quality: Quality::Best,
+        };
         let copy = original;
         assert_eq!(original, copy);
     }
