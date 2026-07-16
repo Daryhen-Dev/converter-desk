@@ -103,10 +103,10 @@ mod tests {
         let url = MediaUrl::parse("https://example.com/video").unwrap();
         let job = DownloadJob {
             url,
-            format: Format::VideoHighest,
+            format: Format::Video { quality: crate::domain::quality::Quality::Best },
             output_path: "/tmp/video.mp4".to_string(),
         };
-        assert_eq!(job.format, Format::VideoHighest);
+        assert_eq!(job.format, Format::Video { quality: crate::domain::quality::Quality::Best });
         assert_eq!(job.output_path, "/tmp/video.mp4");
     }
 }

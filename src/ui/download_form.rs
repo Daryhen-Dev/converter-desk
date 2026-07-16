@@ -9,6 +9,7 @@ use egui::ComboBox;
 
 use crate::app::ConverterApp;
 use converter_desk::domain::format::Format;
+use converter_desk::domain::quality::Quality;
 
 /// Render the download form into `ui`, mutating `app` state in place.
 ///
@@ -37,8 +38,8 @@ pub fn show(ui: &mut egui::Ui, app: &mut ConverterApp) {
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
                         &mut app.format,
-                        Format::VideoHighest,
-                        format_label(Format::VideoHighest),
+                        Format::Video { quality: Quality::Best },
+                        format_label(Format::Video { quality: Quality::Best }),
                     );
                     ui.selectable_value(
                         &mut app.format,
@@ -73,15 +74,29 @@ pub fn show(ui: &mut egui::Ui, app: &mut ConverterApp) {
 
         ui.add_space(8.0);
 
-        // ── Submit button ────────────────────────────────────────────────────
-        // Disabled while Running per spec (egui-ui: submit disabled while running).
-        let submit_label = if is_running { "Downloading…" } else { "Download" };
-        if ui
-            .add_enabled(!is_running, egui::Button::new(submit_label))
-            .clicked()
-        {
-            app.submit();
-        }
+        // ── Preview + Submit buttons ─────────────────────────────────────────
+        ui.horizontal(|ui| {
+            // Preview button — disabled while already loading
+            let is_loading = matches!(app.probe_state, crate::app::ProbeState::Loading);
+            if ui
+                .add_enabled(
+                    !is_loading,
+                    egui::Button::new(if is_loading { "Probing…" } else { "Preview" }),
+                )
+                .clicked()
+            {
+                app.start_probe(app.url_input.clone());
+            }
+
+            // Download button — enabled for ALL ProbeState variants
+            let submit_label = if is_running { "Downloading…" } else { "Download" };
+            if ui
+                .add_enabled(!is_running, egui::Button::new(submit_label))
+                .clicked()
+            {
+                app.submit();
+            }
+        });
     });
 }
 
@@ -89,7 +104,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut ConverterApp) {
 
 fn format_label(format: Format) -> &'static str {
     match format {
-        Format::VideoHighest => "Video (highest quality)",
+        Format::Video { .. } => "Video (highest quality)",
         Format::AudioMp3 => "Audio (MP3)",
     }
 }

@@ -1,4 +1,6 @@
 use crate::domain::job::{Progress, Stage};
+use crate::domain::media_info::MediaInfo;
+use crate::domain::media_url::MediaUrl;
 
 /// A sink that receives progress events during a download.
 ///
@@ -35,4 +37,27 @@ pub trait BinaryProbe: Send + Sync {
         &self,
         binary_name: &str,
     ) -> Result<String, crate::application::download_service::DownloadError>;
+}
+
+// ─── ProbeError ──────────────────────────────────────────────────────────────
+
+/// Errors that can occur when probing a media URL for metadata.
+#[derive(Debug, thiserror::Error)]
+pub enum ProbeError {
+    #[error("probe failed: {0}")]
+    Failed(String),
+    #[error("unsupported site or private video: {0}")]
+    Unsupported(String),
+}
+
+// ─── MediaProbe ──────────────────────────────────────────────────────────────
+
+/// Port for probing a media URL to retrieve its metadata.
+///
+/// Implementations spawn `yt-dlp --no-playlist -J <url>` and map the JSON
+/// output to a `MediaInfo` domain struct.
+///
+/// `Send + Sync` bounds allow use from multiple threads.
+pub trait MediaProbe: Send + Sync {
+    fn probe(&self, url: &MediaUrl) -> Result<MediaInfo, ProbeError>;
 }

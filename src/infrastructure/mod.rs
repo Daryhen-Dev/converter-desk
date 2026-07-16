@@ -3,3 +3,4 @@ pub mod binary_probe;
 pub mod channel_sink;
 pub mod progress_parser;
 pub mod ytdlp_downloader;
+pub mod ytdlp_probe;

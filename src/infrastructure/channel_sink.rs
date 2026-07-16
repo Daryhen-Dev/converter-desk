@@ -1,5 +1,6 @@
 use crate::application::ports::ProgressSink;
 use crate::domain::job::{Progress, Stage};
+use crate::domain::media_info::MediaInfo;
 use std::sync::mpsc;
 
 /// Events that flow from the worker thread to the UI thread.
@@ -9,6 +10,14 @@ pub enum AppEvent {
     Stage(Stage),
     Done,
     Error(String),
+    /// Probe completed successfully — carries the media metadata.
+    ProbeResult(MediaInfo),
+    /// Probe failed — carries a human-readable error message.
+    ProbeError(String),
+    /// Thumbnail bytes fetched from the network.
+    /// Carries `(bytes, unique_uri)` where `unique_uri` is a `bytes://` URI
+    /// derived from the probed URL hash to avoid egui image cache collisions.
+    ThumbnailReady(Vec<u8>, String),
 }
 
 /// A `ProgressSink` implementation that forwards events over an `mpsc` channel.

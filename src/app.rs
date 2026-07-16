@@ -3,17 +3,23 @@
 //! This module is declared ONLY in `main.rs` (bin side) — never in `lib.rs`.
 //! egui/eframe imports live here and nowhere in the library crate.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use converter_desk::application::download_service::DownloadService;
+use converter_desk::application::ports::MediaProbe;
 use converter_desk::domain::format::Format;
 use converter_desk::domain::job::DownloadJob;
+use converter_desk::domain::media_info::MediaInfo;
 use converter_desk::domain::media_url::MediaUrl;
+use converter_desk::domain::quality::Quality;
 use converter_desk::infrastructure::channel_sink::{AppEvent, ChannelSink};
 use converter_desk::infrastructure::ytdlp_downloader::YtDlpDownloader;
+use converter_desk::infrastructure::ytdlp_probe::YtDlpProbe;
 
 use eframe::egui;
 use crate::ui;
@@ -34,6 +40,20 @@ pub enum JobState {
     /// The download completed successfully.
     Done,
     /// The download failed; carries an error description.
+    Error(String),
+}
+
+// ─── ProbeState ──────────────────────────────────────────────────────────────
+
+/// Lifecycle state of the media probe (Preview) operation.
+pub enum ProbeState {
+    /// No probe has been requested yet.
+    Idle,
+    /// A probe is in progress — worker thread is running.
+    Loading,
+    /// Probe completed — metadata is available.
+    Loaded(MediaInfo),
+    /// Probe failed — carries a human-readable error message.
     Error(String),
 }
 
@@ -80,8 +100,18 @@ pub struct ConverterApp {
     receiver: Option<Receiver<AppEvent>>,
     worker: Option<JoinHandle<()>>,
 
+    // Probe state
+    pub probe_state: ProbeState,
+    pub thumbnail_bytes: Option<Vec<u8>>,
+    pub thumbnail_uri: Option<String>,
+    /// Dedicated channel receiver for probe events (separate from download channel).
+    probe_rx: Option<Receiver<AppEvent>>,
+
     // Service (shared with worker thread via Arc)
     service: Arc<DownloadService<YtDlpDownloader>>,
+
+    // Media probe adapter (shared with worker thread via Arc)
+    probe: Arc<dyn MediaProbe>,
 
     // Preflight
     pub preflight: PreflightResult,
@@ -94,6 +124,7 @@ impl ConverterApp {
     /// displayed as an actionable banner when binaries are missing.
     pub fn new(
         service: DownloadService<YtDlpDownloader>,
+        probe: YtDlpProbe,
         preflight: PreflightResult,
     ) -> Self {
         let output_dir = dirs::download_dir()
@@ -101,12 +132,17 @@ impl ConverterApp {
 
         Self {
             url_input: String::new(),
-            format: Format::VideoHighest,
+            format: Format::Video { quality: Quality::Best },
             output_dir,
             job_state: JobState::Idle,
             receiver: None,
             worker: None,
+            probe_state: ProbeState::Idle,
+            thumbnail_bytes: None,
+            thumbnail_uri: None,
+            probe_rx: None,
             service: Arc::new(service),
+            probe: Arc::new(probe),
             preflight,
         }
     }
@@ -114,6 +150,40 @@ impl ConverterApp {
     /// Returns `true` while a download is in progress.
     pub fn is_running(&self) -> bool {
         matches!(self.job_state, JobState::Running { .. })
+    }
+
+    /// Start a media probe on a worker thread.
+    ///
+    /// Transitions `probe_state` to `Loading` immediately. The worker thread
+    /// sends `AppEvent::ProbeResult` or `AppEvent::ProbeError` via a dedicated
+    /// probe channel (`probe_rx`), kept separate from the download channel.
+    pub fn start_probe(&mut self, url_str: String) {
+        let url = match MediaUrl::parse(&url_str) {
+            Ok(u) => u,
+            Err(e) => {
+                self.probe_state = ProbeState::Error(format!("Invalid URL: {e}"));
+                return;
+            }
+        };
+
+        self.probe_state = ProbeState::Loading;
+        self.thumbnail_bytes = None;
+        self.thumbnail_uri = None;
+
+        let (tx, rx) = mpsc::channel::<AppEvent>();
+        self.probe_rx = Some(rx);
+
+        let probe = Arc::clone(&self.probe);
+        std::thread::spawn(move || {
+            match probe.probe(&url) {
+                Ok(info) => {
+                    let _ = tx.send(AppEvent::ProbeResult(info));
+                }
+                Err(e) => {
+                    let _ = tx.send(AppEvent::ProbeError(e.to_string()));
+                }
+            }
+        });
     }
 
     /// Called from `ui` when the user clicks Submit.
@@ -185,6 +255,7 @@ impl ConverterApp {
     fn drain_receiver(&mut self) {
         use std::sync::mpsc::TryRecvError;
 
+        // ── Download channel ────────────────────────────────────────────────
         loop {
             match self.receiver.as_ref().map(|rx| rx.try_recv()) {
                 Some(Ok(event)) => match event {
@@ -217,15 +288,80 @@ impl ConverterApp {
                         self.job_state = JobState::Error(msg);
                         self.receiver = None;
                     }
+                    // Download channel should not receive probe events, but handle gracefully.
+                    AppEvent::ProbeResult(_) | AppEvent::ProbeError(_) | AppEvent::ThumbnailReady(_, _) => {}
                 },
                 Some(Err(TryRecvError::Empty)) => break,
                 Some(Err(TryRecvError::Disconnected)) => {
-                    // Worker thread finished without sending Done/Error.
-                    // Treat as completion.
                     if matches!(self.job_state, JobState::Running { .. }) {
                         self.job_state = JobState::Done;
                     }
                     self.receiver = None;
+                    break;
+                }
+                None => break,
+            }
+        }
+
+        // ── Probe channel ───────────────────────────────────────────────────
+        loop {
+            match self.probe_rx.as_ref().map(|rx| rx.try_recv()) {
+                Some(Ok(event)) => match event {
+                    AppEvent::ProbeResult(info) => {
+                        // If thumbnail URL is available, spawn fetch worker.
+                        if let Some(ref thumb_url) = info.thumbnail_url {
+                            let thumb_url_clone = thumb_url.clone();
+                            let probe_url_hash = {
+                                let mut h = DefaultHasher::new();
+                                thumb_url_clone.hash(&mut h);
+                                h.finish()
+                            };
+                            let uri = format!("bytes://thumb-{probe_url_hash:x}");
+
+                            // Reuse probe_rx for the thumbnail result by creating a thumb channel.
+                            let (thumb_tx, thumb_rx) = mpsc::channel::<AppEvent>();
+                            self.probe_rx = Some(thumb_rx);
+
+                            std::thread::spawn(move || {
+                                let result: Result<Vec<u8>, String> = (|| {
+                                    let mut response = ureq::get(&thumb_url_clone)
+                                        .call()
+                                        .map_err(|e| e.to_string())?;
+                                    let bytes = response
+                                        .body_mut()
+                                        .read_to_vec()
+                                        .map_err(|e| e.to_string())?;
+                                    Ok(bytes)
+                                })();
+                                match result {
+                                    Ok(bytes) => {
+                                        let _ = thumb_tx.send(AppEvent::ThumbnailReady(bytes, uri));
+                                    }
+                                    Err(_) => {
+                                        // Thumbnail fetch failed — no event sent, metadata still shows.
+                                    }
+                                }
+                            });
+                        } else {
+                            self.probe_rx = None;
+                        }
+                        self.probe_state = ProbeState::Loaded(info);
+                    }
+                    AppEvent::ProbeError(msg) => {
+                        self.probe_state = ProbeState::Error(msg);
+                        self.probe_rx = None;
+                    }
+                    AppEvent::ThumbnailReady(bytes, uri) => {
+                        self.thumbnail_bytes = Some(bytes);
+                        self.thumbnail_uri = Some(uri);
+                        self.probe_rx = None;
+                    }
+                    // Probe channel should not receive download events.
+                    AppEvent::Progress(_) | AppEvent::Stage(_) | AppEvent::Done | AppEvent::Error(_) => {}
+                },
+                Some(Err(TryRecvError::Empty)) => break,
+                Some(Err(TryRecvError::Disconnected)) => {
+                    self.probe_rx = None;
                     break;
                 }
                 None => break,
@@ -267,7 +403,16 @@ impl eframe::App for ConverterApp {
             ui.separator();
         }
 
-        // 5. Status view — always shown so the user can see Done/Error state.
+        // 5. Preview panel — only renders content when Loaded, shows stub otherwise.
+        ui::preview_panel::show(
+            ui,
+            &self.probe_state,
+            self.thumbnail_bytes.as_deref(),
+            self.thumbnail_uri.as_deref(),
+        );
+        ui.separator();
+
+        // 6. Status view — always shown so the user can see Done/Error state.
         ui::status_view::show(ui, &self.job_state);
     }
 

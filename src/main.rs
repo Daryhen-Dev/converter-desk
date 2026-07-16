@@ -20,6 +20,7 @@ use converter_desk::application::download_service::DownloadService;
 use converter_desk::application::ports::BinaryProbe;
 use converter_desk::infrastructure::binary_probe::{BinaryProbeImpl, resolve_binary_path};
 use converter_desk::infrastructure::ytdlp_downloader::YtDlpDownloader;
+use converter_desk::infrastructure::ytdlp_probe::YtDlpProbe;
 
 use eframe::egui;
 
@@ -66,11 +67,12 @@ fn main() -> eframe::Result {
     let effective_ytdlp_path =
         ytdlp_path.unwrap_or_else(|| std::path::PathBuf::from("yt-dlp"));
 
-    let downloader = YtDlpDownloader::new(effective_ytdlp_path);
+    let downloader = YtDlpDownloader::new(effective_ytdlp_path.clone());
     let service = DownloadService::new(downloader);
+    let probe = YtDlpProbe::new(effective_ytdlp_path);
 
     // ── Step 4: Construct the app ────────────────────────────────────────────
-    let app = ConverterApp::new(service, preflight);
+    let app = ConverterApp::new(service, probe, preflight);
 
     // ── Step 5: Run the eframe event loop ────────────────────────────────────
     let native_options = eframe::NativeOptions {
@@ -84,6 +86,10 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Converter Desk",
         native_options,
-        Box::new(move |_cc| Ok(Box::new(app))),
+        Box::new(move |cc| {
+            // Install image loaders INSIDE the run_native closure to access CreationContext.
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Ok(Box::new(app))
+        }),
     )
 }

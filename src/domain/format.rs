@@ -1,19 +1,25 @@
+use crate::domain::quality::Quality;
+
+/// Output format selected by the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
-    VideoHighest,
+    /// Video with a specific quality constraint.
+    /// `Quality::Best` is the unconstrained form (equivalent to former `VideoHighest`).
+    Video { quality: Quality },
+    /// Audio extracted and encoded to MP3.
     AudioMp3,
 }
 
 #[cfg(test)]
 mod tests {
     use super::Format;
+    use crate::domain::quality::Quality;
 
-    // 2.1 RED → GREEN — Format::VideoHighest and Format::AudioMp3 are representable,
-    // PartialEq/Clone/Copy derive
+    // Migrated format representability tests.
     #[test]
-    fn format_video_highest_is_representable() {
-        let f = Format::VideoHighest;
-        assert_eq!(f, Format::VideoHighest);
+    fn format_video_best_is_representable() {
+        let f = Format::Video { quality: Quality::Best };
+        assert_eq!(f, Format::Video { quality: Quality::Best });
     }
 
     #[test]
@@ -24,20 +30,16 @@ mod tests {
 
     #[test]
     fn format_variants_are_distinct() {
-        assert_ne!(Format::VideoHighest, Format::AudioMp3);
+        assert_ne!(
+            Format::Video { quality: Quality::Best },
+            Format::AudioMp3
+        );
     }
 
     #[test]
     fn format_is_copyable() {
-        let original = Format::VideoHighest;
-        let copy = original; // Copy semantics
+        let original = Format::Video { quality: Quality::Best };
+        let copy = original;
         assert_eq!(original, copy);
-    }
-
-    #[test]
-    fn format_is_cloneable() {
-        let original = Format::AudioMp3;
-        let cloned = original.clone();
-        assert_eq!(original, cloned);
     }
 }

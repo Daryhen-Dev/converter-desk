@@ -70,7 +70,7 @@ mod tests {
     fn make_job() -> DownloadJob {
         DownloadJob {
             url: MediaUrl::parse("https://example.com/video").unwrap(),
-            format: Format::VideoHighest,
+            format: Format::Video { quality: crate::domain::quality::Quality::Best },
             output_path: "%(title)s.%(ext)s".to_string(),
         }
     }
