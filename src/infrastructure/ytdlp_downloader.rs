@@ -55,6 +55,11 @@ impl MediaDownloader for YtDlpDownloader {
 
         let mut child = std::process::Command::new(&self.binary_path)
             .args(&args)
+            // Give yt-dlp a valid (null) stdin. When the app is launched from a
+            // GUI shortcut (no console), the parent's stdin handle is invalid;
+            // inheriting it makes yt-dlp fail with "[Errno 22] Invalid argument"
+            // on Windows. Setting it explicitly avoids that.
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

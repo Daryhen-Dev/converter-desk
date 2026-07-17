@@ -36,6 +36,8 @@ impl MediaProbe for YtDlpProbe {
     fn probe(&self, url: &MediaUrl) -> Result<MediaInfo, ProbeError> {
         let output = std::process::Command::new(&self.binary_path)
             .args(build_probe_args(url))
+            // Explicit null stdin — see YtDlpDownloader for the GUI-launch rationale.
+            .stdin(std::process::Stdio::null())
             .output()
             .map_err(|e| ProbeError::Failed(format!("failed to spawn yt-dlp: {e}")))?;
 
