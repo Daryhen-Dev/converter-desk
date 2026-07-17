@@ -65,13 +65,12 @@ pub fn show(
                     if let (Some(bytes), Some(uri)) = (thumbnail_bytes, thumbnail_uri) {
                         // Use egui's Image widget with from_bytes — requires install_image_loaders
                         let img = egui::Image::from_bytes(uri.to_owned(), bytes.to_vec())
-                            .max_width(180.0)
-                            .max_height(101.0); // 16:9 for 180px wide
+                            .fit_to_exact_size(egui::vec2(320.0, 180.0));
                         ui.add(img);
                     } else {
                         // Placeholder
                         let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(180.0, 101.0), egui::Sense::hover());
+                            ui.allocate_exact_size(egui::vec2(320.0, 180.0), egui::Sense::hover());
                         ui.painter()
                             .rect_filled(rect, 4.0, egui::Color32::from_gray(60));
                         ui.painter().text(

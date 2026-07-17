@@ -86,8 +86,8 @@ fn main() -> eframe::Result {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Converter Desk")
-            .with_inner_size([520.0, 340.0])
-            .with_min_inner_size([400.0, 260.0]),
+            .with_inner_size([640.0, 480.0])
+            .with_min_inner_size([480.0, 360.0]),
         ..eframe::NativeOptions::default()
     };
 

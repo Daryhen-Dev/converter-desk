@@ -74,10 +74,7 @@ pub fn parse_probe_json(value: &Value) -> Result<MediaInfo, ProbeError> {
         .map(str::to_owned)
         .ok_or_else(|| ProbeError::Failed("missing 'title' in yt-dlp JSON".to_string()))?;
 
-    let thumbnail_url = value
-        .get("thumbnail")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
+    let thumbnail_url = best_thumbnail_url(value);
 
     let duration_secs = value.get("duration").and_then(Value::as_f64);
 
@@ -131,6 +128,33 @@ pub fn parse_probe_json(value: &Value) -> Result<MediaInfo, ProbeError> {
         uploader,
         available_qualities,
     })
+}
+
+/// Select the highest-resolution thumbnail URL from the yt-dlp JSON.
+///
+/// Prefers the entry in the `thumbnails` array with the greatest reported
+/// `width` (yt-dlp usually lists several resolutions); falls back to the
+/// top-level `thumbnail` field when the array is absent or has no usable URL.
+/// Returns `None` when no thumbnail is available.
+fn best_thumbnail_url(value: &Value) -> Option<String> {
+    if let Some(arr) = value.get("thumbnails").and_then(Value::as_array) {
+        let widest = arr
+            .iter()
+            .filter_map(|t| {
+                let url = t.get("url").and_then(Value::as_str)?;
+                let width = t.get("width").and_then(Value::as_u64).unwrap_or(0);
+                Some((width, url.to_owned()))
+            })
+            .max_by_key(|(width, _)| *width)
+            .map(|(_, url)| url);
+        if widest.is_some() {
+            return widest;
+        }
+    }
+    value
+        .get("thumbnail")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -261,6 +285,44 @@ mod tests {
         match result {
             Ok(_) | Err(_) => {} // either is fine — just no panic
         }
+    }
+
+    // thumbnails[] array → pick the widest entry (not the top-level thumbnail)
+    #[test]
+    fn picks_widest_thumbnail_from_array() {
+        let value = json!({
+            "title": "Thumb Test",
+            "thumbnail": "https://example.com/small.jpg",
+            "thumbnails": [
+                { "url": "https://example.com/120.jpg", "width": 120 },
+                { "url": "https://example.com/1280.jpg", "width": 1280 },
+                { "url": "https://example.com/640.jpg", "width": 640 }
+            ],
+            "formats": []
+        });
+
+        let result = parse_probe_json(&value).expect("should succeed");
+        assert_eq!(
+            result.thumbnail_url,
+            Some("https://example.com/1280.jpg".to_string()),
+            "must pick the widest thumbnail from the array"
+        );
+    }
+
+    // No thumbnails array → fall back to the top-level thumbnail field
+    #[test]
+    fn falls_back_to_top_level_thumbnail() {
+        let value = json!({
+            "title": "Fallback Test",
+            "thumbnail": "https://example.com/only.jpg",
+            "formats": []
+        });
+
+        let result = parse_probe_json(&value).expect("should succeed");
+        assert_eq!(
+            result.thumbnail_url,
+            Some("https://example.com/only.jpg".to_string())
+        );
     }
 
     // ── Integration test (requires real yt-dlp binary) ──────────────────────
