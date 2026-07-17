@@ -1,3 +1,7 @@
+// Hide the console window on Windows in release builds (GUI subsystem).
+// Kept in debug builds so `cargo run` still shows stdout/stderr for debugging.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! Composition root for converter-desk.
 //!
 //! Responsibilities:
