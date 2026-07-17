@@ -6,3 +6,8 @@
 
 # MSVC debug info
 *.pdb
+
+# Installer: bundled third-party binaries and generated setup (large, regenerable).
+# The Inno Setup script (installer/*.iss) IS versioned; these are not.
+/installer/assets
+/installer/output
