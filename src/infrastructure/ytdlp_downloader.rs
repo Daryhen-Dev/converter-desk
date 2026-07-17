@@ -44,9 +44,22 @@ impl MediaDownloader for YtDlpDownloader {
         let mut child = std::process::Command::new(&self.binary_path)
             .args(&args)
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| DownloadError::Failed(format!("failed to spawn yt-dlp: {e}")))?;
+
+        // Drain stderr on a dedicated thread. If we only read stdout and yt-dlp
+        // fills its stderr pipe buffer, the child blocks on write and we
+        // deadlock — so stderr must be consumed concurrently. yt-dlp prints its
+        // `ERROR:` diagnostics here, which we surface on a non-zero exit.
+        let stderr_join = child.stderr.take().map(|stderr| {
+            std::thread::spawn(move || {
+                BufReader::new(stderr)
+                    .lines()
+                    .map_while(Result::ok)
+                    .collect::<Vec<String>>()
+            })
+        });
 
         // Stream stdout line by line to the callback.
         // `take()` moves the stdout handle out of `child` so we can still call `wait()`.
@@ -64,14 +77,39 @@ impl MediaDownloader for YtDlpDownloader {
             .wait()
             .map_err(|e| DownloadError::Failed(format!("failed to wait for yt-dlp: {e}")))?;
 
+        // Join the stderr drain thread to collect what yt-dlp reported.
+        let stderr_lines = stderr_join
+            .map(|h| h.join().unwrap_or_default())
+            .unwrap_or_default();
+
         if status.success() {
             Ok(())
         } else {
-            Err(DownloadError::Failed(format!(
-                "yt-dlp exited with non-zero status: {status}"
-            )))
+            let detail = stderr_tail(&stderr_lines);
+            Err(DownloadError::Failed(if detail.is_empty() {
+                format!("yt-dlp exited with non-zero status: {status}")
+            } else {
+                format!("yt-dlp failed ({status}): {detail}")
+            }))
         }
     }
+}
+
+/// Pick the most relevant line from yt-dlp's captured stderr for error reporting.
+///
+/// Prefers the last line containing `ERROR` (yt-dlp's own error marker);
+/// otherwise falls back to the last non-empty line. Returns an empty string
+/// when stderr produced nothing.
+fn stderr_tail(lines: &[String]) -> String {
+    if let Some(err) = lines.iter().rev().find(|l| l.contains("ERROR")) {
+        return err.trim().to_string();
+    }
+    lines
+        .iter()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .map(|l| l.trim().to_string())
+        .unwrap_or_default()
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
