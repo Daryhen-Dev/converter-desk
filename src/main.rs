@@ -75,7 +75,11 @@ fn main() -> eframe::Result {
     // called — but the service must still be constructed for compilation.
     let effective_ytdlp_path = ytdlp_path.unwrap_or_else(|| std::path::PathBuf::from("yt-dlp"));
 
-    let downloader = YtDlpDownloader::new(effective_ytdlp_path.clone());
+    // Resolve ffmpeg the same way (env → bundled next to exe → PATH) and pass it
+    // to yt-dlp via --ffmpeg-location, so a bundled ffmpeg is used reliably.
+    let ffmpeg_path = resolve_binary_path("ffmpeg", "FFMPEG_PATH");
+
+    let downloader = YtDlpDownloader::new(effective_ytdlp_path.clone(), ffmpeg_path);
     let service = DownloadService::new(downloader);
     let probe = YtDlpProbe::new(effective_ytdlp_path);
 

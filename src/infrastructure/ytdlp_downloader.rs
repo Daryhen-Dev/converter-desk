@@ -14,6 +14,10 @@ use crate::application::ports::MediaDownloader;
 /// `binary` string that real adapters own independently.
 pub struct YtDlpDownloader {
     binary_path: PathBuf,
+    /// Optional explicit ffmpeg path. When set, passed to yt-dlp via
+    /// `--ffmpeg-location` so muxing/transcoding uses this ffmpeg instead of
+    /// relying on the ambient PATH (PLANNING §7.7). Enables portable bundles.
+    ffmpeg_path: Option<PathBuf>,
 }
 
 impl YtDlpDownloader {
@@ -21,8 +25,12 @@ impl YtDlpDownloader {
     ///
     /// `binary_path` must point to the resolved yt-dlp executable (obtained
     /// from `resolve_binary_path`). It is NOT a shell command string.
-    pub fn new(binary_path: PathBuf) -> Self {
-        Self { binary_path }
+    /// `ffmpeg_path`, when `Some`, is forwarded to yt-dlp as `--ffmpeg-location`.
+    pub fn new(binary_path: PathBuf, ffmpeg_path: Option<PathBuf>) -> Self {
+        Self {
+            binary_path,
+            ffmpeg_path,
+        }
     }
 }
 
@@ -41,6 +49,10 @@ impl MediaDownloader for YtDlpDownloader {
         args: Vec<String>,
         on_line: &dyn Fn(&str),
     ) -> Result<(), DownloadError> {
+        // Inject an explicit ffmpeg location when known, so a bundled ffmpeg is
+        // used regardless of PATH (PLANNING §7.7).
+        let args = with_ffmpeg_location(args, self.ffmpeg_path.as_deref());
+
         let mut child = std::process::Command::new(&self.binary_path)
             .args(&args)
             .stdout(Stdio::piped())
@@ -95,6 +107,27 @@ impl MediaDownloader for YtDlpDownloader {
     }
 }
 
+/// Prepend an explicit `--ffmpeg-location <path>` to the yt-dlp args when a
+/// bundled/resolved ffmpeg path is known, so yt-dlp uses that ffmpeg for
+/// muxing/transcoding instead of relying on the ambient PATH (PLANNING §7.7).
+///
+/// When `ffmpeg_path` is `None` the args are returned unchanged.
+pub(crate) fn with_ffmpeg_location(
+    args: Vec<String>,
+    ffmpeg_path: Option<&std::path::Path>,
+) -> Vec<String> {
+    match ffmpeg_path {
+        Some(p) => {
+            let mut out = Vec::with_capacity(args.len() + 2);
+            out.push("--ffmpeg-location".to_string());
+            out.push(p.to_string_lossy().into_owned());
+            out.extend(args);
+            out
+        }
+        None => args,
+    }
+}
+
 /// Pick the most relevant line from yt-dlp's captured stderr for error reporting.
 ///
 /// Prefers the last line containing `ERROR` (yt-dlp's own error marker);
@@ -116,8 +149,31 @@ fn stderr_tail(lines: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::YtDlpDownloader;
+    use super::{with_ffmpeg_location, YtDlpDownloader};
     use crate::application::ports::MediaDownloader;
+    use std::path::Path;
+
+    // Pure unit test: --ffmpeg-location is prepended when a path is provided.
+    #[test]
+    fn ffmpeg_location_prepended_when_some() {
+        let base = vec![
+            "--no-playlist".to_string(),
+            "https://example.com/v".to_string(),
+        ];
+        let out = with_ffmpeg_location(base, Some(Path::new("C:/tools/ffmpeg.exe")));
+        assert_eq!(out[0], "--ffmpeg-location");
+        assert_eq!(out[1], "C:/tools/ffmpeg.exe");
+        // Original args preserved after the injected flag; URL stays last.
+        assert_eq!(out.last().unwrap(), "https://example.com/v");
+    }
+
+    // Pure unit test: args unchanged when no ffmpeg path is known.
+    #[test]
+    fn ffmpeg_location_absent_when_none() {
+        let base = vec!["--no-playlist".to_string(), "url".to_string()];
+        let out = with_ffmpeg_location(base.clone(), None);
+        assert_eq!(out, base);
+    }
 
     /// INTEGRATION / MANUAL: requires a real yt-dlp binary.
     /// Run with: `cargo test -- --ignored`
@@ -130,7 +186,7 @@ mod tests {
             crate::infrastructure::binary_probe::resolve_binary_path("yt-dlp", "YT_DLP_PATH")
                 .expect("yt-dlp must be installed and on PATH to run this test");
 
-        let downloader = YtDlpDownloader::new(path);
+        let downloader = YtDlpDownloader::new(path, None);
 
         // A short publicly accessible audio clip (public domain, ~5s).
         // Replace with a reliable short URL if this one becomes unavailable.
@@ -163,7 +219,7 @@ mod tests {
             crate::infrastructure::binary_probe::resolve_binary_path("yt-dlp", "YT_DLP_PATH")
                 .expect("yt-dlp must be installed and on PATH to run this test");
 
-        let downloader = YtDlpDownloader::new(path);
+        let downloader = YtDlpDownloader::new(path, None);
 
         // An intentionally invalid URL should cause yt-dlp to exit non-zero.
         let args = vec![
